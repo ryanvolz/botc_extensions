@@ -1,6 +1,14 @@
 # botc_extensions
 Collection of Discord bot extensions for playing Blood on the Clocktower.
 
+These extensions depend on the utilities found in https://github.com/ryanvolz/discord_bot_utils/, which must be placed at a relative path of `../utils` to this repository folder. For example:
+```
+bot/
+bot/lib/__init__.py
+bot/lib/botc_extensions
+bot/lib/utils
+```
+
 ## townsquare
 
 ### Setup
