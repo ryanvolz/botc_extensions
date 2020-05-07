@@ -44,8 +44,9 @@ BOTC_COUNT = {
     15: dict(town=9, out=2, minion=3, demon=1),
 }
 
-BOTC_GUILD_DEFAULT_SETTINGS = dict(
+BOTC_CATEGORY_DEFAULT_SETTINGS = dict(
     category_re=re.compile(r".*(CLOCKTOWER)|(BOTC).*", re.IGNORECASE),
+    is_town=False,
     dead_emoji="💀",
     vote_emoji="👻",
     novote_emoji="🚫",
@@ -63,8 +64,12 @@ def is_called_from_botc_category():
             # don't restrict match if command is in a DM
             return True
         else:
-            category_re = ctx.bot.botc_townsquare.get(ctx.guild.id, "category_re")
-            return category_re.match(ctx.message.channel.category.name)
+            cat_id = ctx.message.channel.category.id
+            return ctx.bot.botc_townsquare.get(
+                cat_id, "is_town"
+            ) or ctx.bot.botc_townsquare.get(cat_id, "category_re").match(
+                ctx.message.channel.category.name
+            )
 
     return commands.check(predicate)
 
@@ -149,8 +154,8 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         """Return the town dictionary for the command's category."""
         return self.towns[ctx.message.channel.category]
 
-    def format_name_re(self, guild):
-        """Format BOTC name regular expression using emojis from the guild settings."""
+    def format_name_re(self, category):
+        """Format BOTC name regular expression using the category settings."""
         name_re_template = (
             r"^(?:(?P<seat>_\d+)|(?P<st>!ST))?"
             r"\s*"
@@ -161,44 +166,45 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             r"(?P<nick>.*)"
         )
         emoji_vars = ["dead_emoji", "novote_emoji", "vote_emoji", "traveling_emoji"]
-        emojis = {k: self.bot.botc_townsquare.get(guild.id, k) for k in emoji_vars}
+        emojis = {k: self.bot.botc_townsquare.get(category.id, k) for k in emoji_vars}
         name_re = re.compile(name_re_template.format(**emojis))
         return name_re
 
-    def get_name_re(self, guild):
-        """Get BOTC name regular expression from the guild settings."""
+    def get_name_re(self, category):
+        """Get BOTC name regular expression from the category settings."""
         try:
-            return self.name_regexes[hash(guild)]
+            return self.name_regexes[category.id]
         except KeyError:
-            name_re = self.format_name_re(guild)
-            self.name_regexes[hash(guild)] = name_re
+            name_re = self.format_name_re(category)
+            self.name_regexes[category.id] = name_re
             return name_re
 
-    def match_name_re(self, guild, member):
+    def match_name_re(self, category, member):
         """Match a display name to the name regex, extracting player state and nick."""
-        return self.get_name_re(guild).match(member.display_name)
+        return self.get_name_re(category).match(member.display_name)
 
     def player_nickname_components(self, ctx, member):
         """Get a players' nickname components based on their data in player_info."""
+        category = ctx.message.channel.category
         info = self.get_town(ctx)["player_info"][member]
         fill = dict(seat="", dead="", votes="", traveling="")
-        fill["nick"] = self.match_name_re(ctx.guild, member)["nick"]
+        fill["nick"] = self.match_name_re(category, member)["nick"]
         # build the info-derived fill values for the nickname string
         if info["seat"] is not None:
             fill["seat"] = f"_{info['seat']:02d}"
         if info["dead"]:
-            fill["dead"] = self.bot.botc_townsquare.get(ctx.guild.id, "dead_emoji")
+            fill["dead"] = self.bot.botc_townsquare.get(category.id, "dead_emoji")
         if info["num_votes"] is not None:
             if info["num_votes"] == 0:
                 fill["votes"] = self.bot.botc_townsquare.get(
-                    ctx.guild.id, "novote_emoji"
+                    category.id, "novote_emoji"
                 )
             else:
-                vote_emoji = self.bot.botc_townsquare.get(ctx.guild.id, "vote_emoji")
+                vote_emoji = self.bot.botc_townsquare.get(category.id, "vote_emoji")
                 fill["votes"] = info["num_votes"] * vote_emoji
         if info["traveling"]:
             fill["traveling"] = self.bot.botc_townsquare.get(
-                ctx.guild.id, "traveling_emoji"
+                category.id, "traveling_emoji"
             )
         return fill
 
@@ -216,13 +222,13 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
 
     async def set_storyteller_nickname(self, ctx, member):
         """Set a member's nickname to have storyteller markings."""
-        nick = self.match_name_re(ctx.guild, member)["nick"]
+        nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
         name = f"!ST {nick}"
         await member.edit(nick=name)
 
     async def restore_name(self, ctx, member):
         """Restore a member's nickname after playing."""
-        nick = self.match_name_re(ctx.guild, member)["nick"]
+        nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
         name = f"{nick}"
         await member.edit(nick=name)
 
@@ -553,10 +559,10 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             nom_color = discord.Color.gold()
 
         nominator_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.guild, nominator)["nick"]
+            self.match_name_re(ctx.message.channel.category, nominator)["nick"]
         )
         target_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.guild, target)["nick"]
+            self.match_name_re(ctx.message.channel.category, target)["nick"]
         )
         nom_type = "execution" if target not in town["travelers"] else "exile"
         nom_str = f"**{nominator_nick}** nominates **{target_nick}** for {nom_type}."
@@ -706,7 +712,7 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             raise commands.UserInputError("Statement is empty")
         author = ctx.message.author
         author_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.guild, author)["nick"]
+            self.match_name_re(ctx.message.channel.category, author)["nick"]
         )
         embed = discord.Embed(description=statement, color=discord.Color.blue())
         embed.set_author(name=author_nick, icon_url=author.avatar_url)
@@ -717,7 +723,7 @@ def setup(bot):
     """Set up the Blood on the Clocktower extension."""
     # set up persistent botc guild settings
     bot.botc_townsquare = DiscordIDSettings(
-        bot, "botc_townsquare", BOTC_GUILD_DEFAULT_SETTINGS
+        bot, "botc_townsquare", BOTC_CATEGORY_DEFAULT_SETTINGS
     )
 
     bot.add_cog(BOTCTownSquare(bot))
