@@ -11,6 +11,7 @@
 """Discord extension for Blood on the Clocktower."""
 
 import collections
+import functools
 import math
 import random
 import re
@@ -65,16 +66,52 @@ def is_called_from_botc_category():
             return True
         else:
             cat_id = ctx.message.channel.category.id
-            return ctx.bot.botc_townsquare.get(
+            return ctx.bot.botc_townsquare_settings.get(
                 cat_id, "is_town"
-            ) or ctx.bot.botc_townsquare.get(cat_id, "category_re").match(
+            ) or ctx.bot.botc_townsquare_settings.get(cat_id, "category_re").match(
                 ctx.message.channel.category.name
             )
 
     return commands.check(predicate)
 
 
-class BOTCErrors(object):
+def require_locked_town():
+    """Return command decorator that raises an error if the town is lunocked."""
+
+    def decorator(command):
+        @functools.wraps(command)
+        async def wrapper(self, ctx, *args, **kwargs):
+            town = self.bot.botc_townsquare.get_town(ctx)
+            if not town["locked"]:
+                raise BOTCTownSquareErrors.TownUnlocked(
+                    "Command requires a locked town."
+                )
+            return await command(self, ctx, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def require_unlocked_town():
+    """Return command decorator that raises an error if the town is locked."""
+
+    def decorator(command):
+        @functools.wraps(command)
+        async def wrapper(self, ctx, *args, **kwargs):
+            town = self.bot.botc_townsquare.get_town(ctx)
+            if town["locked"]:
+                raise BOTCTownSquareErrors.TownLocked(
+                    "Command requires an unlocked town."
+                )
+            return await command(self, ctx, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+class BOTCTownSquareErrors(object):
     class BadPlayerArgument(commands.UserInputError):
         """Bad argument intended to resolve to a player."""
 
@@ -98,11 +135,41 @@ class BOTCErrors(object):
         pass
 
 
-class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
+class BOTCTownSquareErrorMixin(object):
+    async def cog_command_error(self, ctx, error):
+        """Handle common cog errors."""
+        if isinstance(error, BOTCTownSquareErrors.BadPlayerArgument):
+            await ctx.send(
+                f"This game isn't meant for {error.member.display_name}.",
+                delete_after=BOTC_MESSAGE_DELETE_DELAY,
+            )
+        elif isinstance(error, BOTCTownSquareErrors.BadSeatArgument):
+            await ctx.send("That seat doesn't look like anything to me.")
+        elif isinstance(error, BOTCTownSquareErrors.TownLocked):
+            locked_message = (
+                f"Before I'll allow that, you'll need to put the town into a deep and"
+                f" dreamless slumber. [`{ctx.prefix}unlock` first]"
+            )
+            await ctx.send(locked_message, delete_after=BOTC_MESSAGE_DELETE_DELAY)
+        elif isinstance(error, BOTCTownSquareErrors.TownUnlocked):
+            unlocked_message = (
+                f"This game isn't meant for anyone yet. [`{ctx.prefix}lock` first]"
+            )
+            await ctx.send(unlocked_message, delete_after=BOTC_MESSAGE_DELETE_DELAY)
+        else:
+            # if we're not handling the error here, return so the rest doesn't happen
+            return
+        # mark error as handled so that bot error handler ignores it
+        error.handled = True
+        # delete errored command message with same delay as deletion of bot's response
+        await ctx.message.delete(delay=BOTC_MESSAGE_DELETE_DELAY)
+
+
+class BOTCTownSquare(object):
     """Blood on the Clocktower Town Square."""
 
     def __init__(self, bot):
-        """Initialize cog for Blood on the Clocktower Town Square."""
+        """Load/initialize state for the town square."""
         self.bot = bot
         self.towns = collections.defaultdict(self._empty_town)
         self.name_regexes = {}
@@ -122,33 +189,9 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             prev_nomination=None,
         )
 
-    async def cog_command_error(self, ctx, error):
-        """Handle common cog errors."""
-        if isinstance(error, BOTCErrors.BadPlayerArgument):
-            await ctx.send(
-                f"This game isn't meant for {error.member.display_name}.",
-                delete_after=BOTC_MESSAGE_DELETE_DELAY,
-            )
-        elif isinstance(error, BOTCErrors.BadSeatArgument):
-            await ctx.send("That seat doesn't look like anything to me.")
-        elif isinstance(error, BOTCErrors.TownLocked):
-            locked_message = (
-                f"Before I'll allow that, you'll need to put the town into a deep and"
-                f" dreamless slumber. [`{ctx.prefix}unlock` first]"
-            )
-            await ctx.send(locked_message, delete_after=BOTC_MESSAGE_DELETE_DELAY)
-        elif isinstance(error, BOTCErrors.TownUnlocked):
-            unlocked_message = (
-                f"This game isn't meant for anyone yet. [`{ctx.prefix}lock` first]"
-            )
-            await ctx.send(unlocked_message, delete_after=BOTC_MESSAGE_DELETE_DELAY)
-        else:
-            # if we're not handling the error here, return so the rest doesn't happen
-            return
-        # mark error as handled so that bot error handler ignores it
-        error.handled = True
-        # delete errored command message with same delay as deletion of bot's response
-        await ctx.message.delete(delay=BOTC_MESSAGE_DELETE_DELAY)
+    def teardown(self):
+        """Save state for the town square."""
+        pass
 
     def get_town(self, ctx):
         """Return the town dictionary for the command's category."""
@@ -166,7 +209,9 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             r"(?P<nick>.*)"
         )
         emoji_vars = ["dead_emoji", "novote_emoji", "vote_emoji", "traveling_emoji"]
-        emojis = {k: self.bot.botc_townsquare.get(category.id, k) for k in emoji_vars}
+        emojis = {
+            k: self.bot.botc_townsquare_settings.get(category.id, k) for k in emoji_vars
+        }
         name_re = re.compile(name_re_template.format(**emojis))
         return name_re
 
@@ -193,17 +238,21 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         if info["seat"] is not None:
             fill["seat"] = f"_{info['seat']:02d}"
         if info["dead"]:
-            fill["dead"] = self.bot.botc_townsquare.get(category.id, "dead_emoji")
+            fill["dead"] = self.bot.botc_townsquare_settings.get(
+                category.id, "dead_emoji"
+            )
         if info["num_votes"] is not None:
             if info["num_votes"] == 0:
-                fill["votes"] = self.bot.botc_townsquare.get(
+                fill["votes"] = self.bot.botc_townsquare_settings.get(
                     category.id, "novote_emoji"
                 )
             else:
-                vote_emoji = self.bot.botc_townsquare.get(category.id, "vote_emoji")
+                vote_emoji = self.bot.botc_townsquare_settings.get(
+                    category.id, "vote_emoji"
+                )
                 fill["votes"] = info["num_votes"] * vote_emoji
         if info["traveling"]:
-            fill["traveling"] = self.bot.botc_townsquare.get(
+            fill["traveling"] = self.bot.botc_townsquare_settings.get(
                 category.id, "traveling_emoji"
             )
         return fill
@@ -248,7 +297,7 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
                 if member == 0 and len(self.get_town(ctx)["storytellers"]) == 1:
                     member = self.get_town(ctx)["storytellers"].pop()
                 else:
-                    raise BOTCErrors.BadSeatArgument("Seat number is invalid")
+                    raise BOTCTownSquareErrors.BadSeatArgument("Seat number is invalid")
         return member
 
     async def resolve_player_arg(self, ctx, member):
@@ -258,146 +307,135 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         if member in self.get_town(ctx)["players"]:
             return member
         else:
-            raise BOTCErrors.BadPlayerArgument("Member isn't a player", member)
-
-    @commands.command(
-        name="storytell", aliases=["st"], brief="Add a storyteller", usage="[<name>]"
-    )
-    @commands.guild_only()
-    @is_called_from_botc_category()
-    @delete_command_message()
-    async def storytell(self, ctx, *, member: discord.Member = None):
-        """Set the caller or given user as a storyteller."""
-        town = self.get_town(ctx)
-        if member is None:
-            member = ctx.message.author
-        if not town["locked"]:
-            if member in town["storytellers"]:
-                return
-            if member in town["players"]:
-                await ctx.invoke(self.unplay, member=member)
-            town["storytellers"].add(member)
-            await self.set_storyteller_nickname(ctx, member)
-            storyteller_role = discord.utils.get(
-                ctx.guild.roles, name="Storytelling BOTC"
-            )
-            await member.add_roles(storyteller_role)
-        else:
-            raise BOTCErrors.TownLocked(
-                "Adding a storyteller requires an unlocked town."
+            raise BOTCTownSquareErrors.BadPlayerArgument(
+                "Member isn't a player", member
             )
 
-    @commands.command(name="unstorytell", aliases=["unst"], brief="Unset storyteller")
-    @commands.guild_only()
-    @is_called_from_botc_category()
-    @delete_command_message()
-    async def unstorytell(self, ctx):
-        """Unset the existing storyteller."""
-        town = self.get_town(ctx)
-        if not town["locked"]:
-            for storyteller in list(town["storytellers"]):
-                town["storytellers"].remove(storyteller)
-                await self.restore_name(ctx, storyteller)
-                storyteller_role = discord.utils.get(
-                    ctx.guild.roles, name="Storytelling BOTC"
-                )
-                await storyteller.remove_roles(storyteller_role)
-        else:
-            raise BOTCErrors.TownLocked(
-                "Removing storytellers requires an unlocked town."
-            )
+
+class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
+    """Commands for town square setup."""
+
+    def __init__(self, bot):
+        """Initialize cog for town square setup commands."""
+        self.bot = bot
+
+    async def cog_check(self, ctx):
+        """Check that setup commands are called from a guild and a town category."""
+        result = await commands.guild_only().predicate(
+            ctx
+        ) and await is_called_from_botc_category().predicate(ctx)
+        return result
 
     @commands.command(brief="Add a player", usage="[<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def play(self, ctx, *, member: discord.Member = None):
         """Set the caller or given user as a player."""
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         if member is None:
             member = ctx.message.author
-        if not town["locked"]:
-            if member in town["players"]:
-                return
-            if member in town["storytellers"]:
-                await ctx.invoke(self.unstorytell)
-            town["players"].add(member)
-            order = town["player_order"]
-            order.append(member)
-            number = len(order)
-            await self.set_player_info(ctx, member, seat=number)
-            player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
-            await member.add_roles(player_role)
-        else:
-            raise BOTCErrors.TownLocked("Adding a player requires an unlocked town.")
+        if member in town["players"]:
+            return
+        if member in town["storytellers"]:
+            await ctx.invoke(self.unstorytell)
+        town["players"].add(member)
+        order = town["player_order"]
+        order.append(member)
+        number = len(order)
+        await self.bot.botc_townsquare.set_player_info(ctx, member, seat=number)
+        player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
+        await member.add_roles(player_role)
 
     @commands.command(
         aliases=["quit"], brief="Remove a player", usage="[<seat>|<name>]"
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def unplay(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Remove the caller or given user as a player."""
-        town = self.get_town(ctx)
-        member = await self.resolve_player_arg(ctx, member)
-        if not town["locked"]:
-            if member in town["travelers"]:
-                await ctx.invoke(self.untravel, member=member)
+        """Remove the caller or given user as a player, also restoring name."""
+        town = self.bot.botc_townsquare.get_town(ctx)
+        member = await self.bot.botc_townsquare.resolve_member_arg(ctx, member)
+        if member in town["travelers"]:
+            await ctx.invoke(self.untravel, member=member)
+        if member in town["players"]:
             town["players"].remove(member)
             town["player_order"].remove(member)
-            await self.restore_name(ctx, member)
-            player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
-            await member.remove_roles(player_role)
-            for idx, player in enumerate(town["player_order"]):
-                if town["player_info"][player]["seat"] != idx + 1:
-                    await self.set_player_info(ctx, player, seat=idx + 1)
-        else:
-            raise BOTCErrors.TownLocked("Removing a player requires an unlocked town.")
+        await self.bot.botc_townsquare.restore_name(ctx, member)
+        player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
+        await member.remove_roles(player_role)
+        for idx, player in enumerate(town["player_order"]):
+            if town["player_info"][player]["seat"] != idx + 1:
+                await self.bot.botc_townsquare.set_player_info(
+                    ctx, player, seat=idx + 1
+                )
 
     @commands.command(brief="Set player as a traveler", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def travel(self, ctx, *, member: typing.Union[int, discord.Member] = None):
         """Set the caller or given user as a traveler."""
-        town = self.get_town(ctx)
-        member = await self.resolve_member_arg(ctx, member)
-        if not town["locked"]:
-            if member not in town["players"]:
-                await ctx.invoke(self.play, member=member)
-            town["travelers"].add(member)
-            await self.set_player_info(ctx, member, traveling=True)
-            traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
-            await member.add_roles(traveler_role)
-        else:
-            raise BOTCErrors.TownLocked("Adding a traveler requires an unlocked town.")
+        town = self.bot.botc_townsquare.get_town(ctx)
+        member = await self.bot.botc_townsquare.resolve_member_arg(ctx, member)
+        if member not in town["players"]:
+            await ctx.invoke(self.play, member=member)
+        town["travelers"].add(member)
+        await self.bot.botc_townsquare.set_player_info(ctx, member, traveling=True)
+        traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
+        await member.add_roles(traveler_role)
 
     @commands.command(brief="Unset player as a traveler", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def untravel(self, ctx, *, member: typing.Union[int, discord.Member] = None):
         """Unset the caller or given user as a traveler."""
-        town = self.get_town(ctx)
-        member = await self.resolve_player_arg(ctx, member)
-        if not town["locked"]:
-            if member not in town["travelers"]:
-                return
-            town["travelers"].remove(member)
-            await self.set_player_info(ctx, member, traveling=False)
-            traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
-            await member.remove_roles(traveler_role)
-        else:
-            raise BOTCErrors.TownLocked(
-                "Removing a traveler requires an unlocked town."
+        town = self.bot.botc_townsquare.get_town(ctx)
+        member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
+        if member not in town["travelers"]:
+            return
+        town["travelers"].remove(member)
+        await self.bot.botc_townsquare.set_player_info(ctx, member, traveling=False)
+        traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
+        await member.remove_roles(traveler_role)
+
+    @commands.command(
+        name="storytell", aliases=["st"], brief="Add a storyteller", usage="[<name>]"
+    )
+    @require_unlocked_town()
+    @delete_command_message()
+    async def storytell(self, ctx, *, member: discord.Member = None):
+        """Set the caller or given user as a storyteller."""
+        town = self.bot.botc_townsquare.get_town(ctx)
+        if member is None:
+            member = ctx.message.author
+        if member in town["storytellers"]:
+            return
+        if member in town["players"]:
+            await ctx.invoke(self.unplay, member=member)
+        town["storytellers"].add(member)
+        await self.bot.botc_townsquare.set_storyteller_nickname(ctx, member)
+        storyteller_role = discord.utils.get(ctx.guild.roles, name="Storytelling BOTC")
+        await member.add_roles(storyteller_role)
+
+    @commands.command(
+        name="unstorytell", aliases=["unst"], brief="Unset storyteller(s)"
+    )
+    @require_unlocked_town()
+    @delete_command_message()
+    async def unstorytell(self, ctx):
+        """Unset the existing storyteller(s)."""
+        town = self.bot.botc_townsquare.get_town(ctx)
+        for storyteller in list(town["storytellers"]):
+            town["storytellers"].remove(storyteller)
+            await self.bot.botc_townsquare.restore_name(ctx, storyteller)
+            storyteller_role = discord.utils.get(
+                ctx.guild.roles, name="Storytelling BOTC"
             )
+            await storyteller.remove_roles(storyteller_role)
 
     @commands.command(
         brief="Move player to a given seat", usage="<new-seat> [<old-seat>|<name>]"
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def sit(
         self, ctx, seat: int, *, member: typing.Union[int, discord.Member] = None
@@ -408,113 +446,182 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         old seat, will be shifted toward the old seat.
 
         """
-        town = self.get_town(ctx)
-        member = await self.resolve_player_arg(ctx, member)
-        if not town["locked"]:
-            order = town["player_order"]
-            oldindex = order.index(member)
-            newindex = seat - 1
-            # puts member in the given seat while shifting the existing occupants
-            # between the new seat and old toward the old seat
-            order.insert(newindex, order.pop(oldindex))
-            for idx, player in enumerate(order):
-                if town["player_info"][player]["seat"] != idx + 1:
-                    await self.set_player_info(ctx, player, seat=idx + 1)
-        else:
-            raise BOTCErrors.TownLocked("Changing seats requires an unlocked town.")
+        town = self.bot.botc_townsquare.get_town(ctx)
+        member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
+        order = town["player_order"]
+        oldindex = order.index(member)
+        newindex = seat - 1
+        # puts member in the given seat while shifting the existing occupants
+        # between the new seat and old toward the old seat
+        order.insert(newindex, order.pop(oldindex))
+        for idx, player in enumerate(order):
+            if town["player_info"][player]["seat"] != idx + 1:
+                await self.bot.botc_townsquare.set_player_info(
+                    ctx, player, seat=idx + 1
+                )
 
     @commands.command(brief="Shuffle seat order")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_unlocked_town()
     @delete_command_message()
     async def shuffle(self, ctx):
         """Shuffle the seat order of the current players."""
-        town = self.get_town(ctx)
-        if not town["locked"]:
-            order = town["player_order"]
-            random.shuffle(order)
-            for idx, player in enumerate(order):
-                if town["player_info"][player]["seat"] != idx + 1:
-                    await self.set_player_info(ctx, player, seat=idx + 1)
-        else:
-            raise BOTCErrors.TownLocked("Shuffling seats requires an unlocked town.")
+        town = self.bot.botc_townsquare.get_town(ctx)
+        order = town["player_order"]
+        random.shuffle(order)
+        for idx, player in enumerate(order):
+            if town["player_info"][player]["seat"] != idx + 1:
+                await self.bot.botc_townsquare.set_player_info(
+                    ctx, player, seat=idx + 1
+                )
 
-    @commands.command(name="lock", aliases=["start"], brief="Lock the town")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+
+class BOTCTownSquareStorytellers(
+    BOTCTownSquareErrorMixin, commands.Cog, name="Storytellers"
+):
+    """Commands for town square storytellers."""
+
+    def __init__(self, bot):
+        """Initialize cog for town square storyteller commands."""
+        self.bot = bot
+
+    async def cog_check(self, ctx):
+        """Check that setup commands are called from a guild and a town category."""
+        result = await commands.guild_only().predicate(
+            ctx
+        ) and await is_called_from_botc_category().predicate(ctx)
+        return result
+
+    @commands.command(name="lock", brief="Lock the town")
     @delete_command_message()
     async def lock(self, ctx):
         """Start a game with the current players, locking the town and seat order."""
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         town["locked"] = True
         await acknowledge_command(ctx)
 
-    @commands.command(name="unlock", aliases=["stop"], brief="Unlock the town")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @commands.command(name="unlock", brief="Unlock the town")
     @delete_command_message()
     async def unlock(self, ctx):
         """Stop (pause) a game, unlocking the town and seat order."""
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         town["locked"] = False
         await acknowledge_command(ctx)
 
     @commands.command(brief="End game and clear the town")
-    @commands.guild_only()
-    @is_called_from_botc_category()
     @delete_command_message()
     async def clear(self, ctx):
         """Clear the current town, erasing game state and restoring names."""
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
         storyteller_role = discord.utils.get(ctx.guild.roles, name="Storytelling BOTC")
         traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
         for player in town["players"]:
-            await self.restore_name(ctx, player)
+            await self.bot.botc_townsquare.restore_name(ctx, player)
             await player.remove_roles(player_role)
         for storyteller in town["storytellers"]:
-            await self.restore_name(ctx, storyteller)
+            await self.bot.botc_townsquare.restore_name(ctx, storyteller)
             await storyteller.remove_roles(storyteller_role)
         for traveler in town["travelers"]:
             await traveler.remove_roles(traveler_role)
-        town.update(self._empty_town())
+        town.update(self.bot.botc_townsquare._empty_town())
         await acknowledge_command(ctx)
 
-    @commands.command(brief="Set player to 'alive'", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
-    @delete_command_message()
-    async def alive(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Set the caller or user as alive, changing their name appropriately."""
-        member = await self.resolve_player_arg(ctx, member)
-        await self.set_player_info(ctx, member, dead=False, num_votes=None)
+
+class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Players"):
+    """Commands for town square players."""
+
+    def __init__(self, bot):
+        """Initialize cog for town square player commands."""
+        self.bot = bot
+
+    async def cog_check(self, ctx):
+        """Check that setup commands are called from a guild and a town category."""
+        result = await commands.guild_only().predicate(
+            ctx
+        ) and await is_called_from_botc_category().predicate(ctx)
+        return result
 
     @commands.command(brief="Set player to 'dead'", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
     @delete_command_message()
     async def dead(self, ctx, *, member: typing.Union[int, discord.Member] = None):
         """Set the caller or user as dead, changing their name appropriately."""
-        member = await self.resolve_player_arg(ctx, member)
-        await self.set_player_info(ctx, member, dead=True, num_votes=1)
+        member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
+        await self.bot.botc_townsquare.set_player_info(
+            ctx, member, dead=True, num_votes=1
+        )
 
     @commands.command(brief="Set player to 'voted'", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
     @delete_command_message()
     async def voted(self, ctx, *, member: typing.Union[int, discord.Member] = None):
         """Set the caller or user as dead with a used ghost vote."""
-        member = await self.resolve_player_arg(ctx, member)
-        await self.set_player_info(ctx, member, dead=True, num_votes=0)
+        member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
+        await self.bot.botc_townsquare.set_player_info(
+            ctx, member, dead=True, num_votes=0
+        )
 
-    @commands.command(brief="Restore nickname", usage="[<seat>|<name>]")
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @commands.command(brief="Set player to 'alive'", usage="[<seat>|<name>]")
     @delete_command_message()
-    async def name(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Restore the caller or user's nickname, stripping game information."""
-        member = await self.resolve_member_arg(ctx, member)
-        await self.restore_name(ctx, member)
+    async def alive(self, ctx, *, member: typing.Union[int, discord.Member] = None):
+        """Set the caller or user as alive, changing their name appropriately."""
+        member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
+        await self.bot.botc_townsquare.set_player_info(
+            ctx, member, dead=False, num_votes=None
+        )
+
+    @commands.command(
+        name="townsquare", aliases=["town", "ts"], brief="Show the town square"
+    )
+    @require_locked_town()
+    @delete_command_message()
+    async def townsquare(self, ctx):
+        """Show the current town square."""
+        town = self.bot.botc_townsquare.get_town(ctx)
+        lines = []
+        alive_count = 0
+        for idx, player in enumerate(town["player_order"]):
+            num = idx + 1
+            digits = "".join(EMOJI_DIGITS[d] for d in f"{num}")
+            fill = self.bot.botc_townsquare.player_nickname_components(ctx, player)
+            s = "{digits}{dead}{votes}{traveling} {nick}".format(digits=digits, **fill)
+            lines.append(s)
+            if not town["player_info"][player]["dead"]:
+                alive_count += 1
+        min_ex = int(math.ceil(alive_count / 2))
+        non_traveler_count = len(town["players"]) - len(town["travelers"])
+        try:
+            count_dict = BOTC_COUNT[non_traveler_count]
+        except KeyError:
+            pass
+        else:
+            lines.append("{town}/{out}/{minion}/{demon}".format(**count_dict))
+        lines.append(f"**{alive_count}** players alive.")
+        lines.append(f"**{min_ex}** votes to execute.")
+
+        embed = discord.Embed(
+            description="\n".join(lines), color=discord.Color.dark_magenta()
+        )
+        await ctx.send(content=None, embed=embed)
+
+    @commands.command(brief="Print the count of character types")
+    @require_locked_town()
+    @delete_command_message()
+    async def count(self, ctx):
+        """Print the count of each character type in this game."""
+        town = self.bot.botc_townsquare.get_town(ctx)
+        non_traveler_count = len(town["players"]) - len(town["travelers"])
+        try:
+            count_dict = BOTC_COUNT[non_traveler_count]
+        except KeyError:
+            await ctx.send(
+                "You don't have the players for a proper game.",
+                delete_after=BOTC_MESSAGE_DELETE_DELAY,
+            )
+        else:
+            countstr = (
+                "{town} townsfolk, {out} outsider(s), {minion} minion(s),"
+                " and {demon} demon"
+            ).format(**count_dict)
+            await ctx.send(countstr)
 
     @commands.group(
         invoke_without_command=True,
@@ -522,16 +629,13 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         brief="Nominate a player for execution",
         usage="( <target-player> | <nominator> <target-player> )",
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_locked_town()
     @delete_command_message()
     async def nominate(
         self, ctx, members: commands.Greedy[typing.Union[int, discord.Member]]
     ):
         """Nominate a player for execution, or set both nominator and target."""
-        town = self.get_town(ctx)
-        if not town["locked"]:
-            raise BOTCErrors.TownUnlocked("Nominating requires a locked town.")
+        town = self.bot.botc_townsquare.get_town(ctx)
         if len(members) == 0:
             raise commands.UserInputError("Could not parse any members to nominate")
         if town["nomination"] is not None:
@@ -546,10 +650,12 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             )
         if len(members) == 1:
             nominator = ctx.message.author
-            target = await self.resolve_player_arg(ctx, members[0])
+            target = await self.bot.botc_townsquare.resolve_player_arg(ctx, members[0])
         else:
-            nominator = await self.resolve_player_arg(ctx, members[0])
-            target = await self.resolve_player_arg(ctx, members[1])
+            nominator = await self.bot.botc_townsquare.resolve_player_arg(
+                ctx, members[0]
+            )
+            target = await self.bot.botc_townsquare.resolve_player_arg(ctx, members[1])
 
         if target not in town["travelers"]:
             nom_type = "execution"
@@ -559,10 +665,14 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             nom_color = discord.Color.gold()
 
         nominator_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.message.channel.category, nominator)["nick"]
+            self.bot.botc_townsquare.match_name_re(
+                ctx.message.channel.category, nominator
+            )["nick"]
         )
         target_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.message.channel.category, target)["nick"]
+            self.bot.botc_townsquare.match_name_re(
+                ctx.message.channel.category, target
+            )["nick"]
         )
         nom_type = "execution" if target not in town["travelers"] else "exile"
         nom_str = f"**{nominator_nick}** nominates **{target_nick}** for {nom_type}."
@@ -581,14 +691,13 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         brief="React to nomination with # of votes",
         usage="<num-votes>",
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_locked_town()
     @delete_command_message()
     async def nominate_votes(self, ctx, num_votes: int):
         """React to the current/previous nomination with the given number of votes."""
         if num_votes < 0 or num_votes > 20:
             raise commands.BadArgument("Number of votes must be in [0, 20].")
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         if town["nomination"] is not None:
             nom = town["nomination"]
         elif town["prev_nomination"] is not None:
@@ -617,12 +726,11 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
     @nominate.command(
         name="cancel", aliases=["delete", "del"], brief="Cancel the nomination"
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_locked_town()
     @delete_command_message()
     async def nominate_cancel(self, ctx):
         """Cancel/delete the current or previous nomination."""
-        town = self.get_town(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx)
         if town["nomination"] is not None:
             await town["nomination"].delete()
             town["nomination"] = None
@@ -636,75 +744,9 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             )
 
     @commands.command(
-        name="townsquare", aliases=["town", "ts"], brief="Show the town square"
-    )
-    @commands.guild_only()
-    @is_called_from_botc_category()
-    @delete_command_message()
-    async def townsquare(self, ctx):
-        """Show the current town square."""
-        town = self.get_town(ctx)
-        if town["locked"]:
-            lines = []
-            alive_count = 0
-            for idx, player in enumerate(town["player_order"]):
-                num = idx + 1
-                digits = "".join(EMOJI_DIGITS[d] for d in f"{num}")
-                fill = self.player_nickname_components(ctx, player)
-                s = "{digits}{dead}{votes}{traveling} {nick}".format(
-                    digits=digits, **fill
-                )
-                lines.append(s)
-                if not town["player_info"][player]["dead"]:
-                    alive_count += 1
-            min_ex = int(math.ceil(alive_count / 2))
-            non_traveler_count = len(town["players"]) - len(town["travelers"])
-            try:
-                count_dict = BOTC_COUNT[non_traveler_count]
-            except KeyError:
-                pass
-            else:
-                lines.append("{town}/{out}/{minion}/{demon}".format(**count_dict))
-            lines.append(f"**{alive_count}** players alive.")
-            lines.append(f"**{min_ex}** votes to execute.")
-
-            embed = discord.Embed(
-                description="\n".join(lines), color=discord.Color.dark_magenta()
-            )
-            await ctx.send(content=None, embed=embed)
-        else:
-            raise BOTCErrors.TownUnlocked("Town square requires a locked town.")
-
-    @commands.command(brief="Print the count of character types")
-    @commands.guild_only()
-    @is_called_from_botc_category()
-    @delete_command_message()
-    async def count(self, ctx):
-        """Print the count of each character type in this game."""
-        town = self.get_town(ctx)
-        if town["locked"]:
-            non_traveler_count = len(town["players"]) - len(town["travelers"])
-            try:
-                count_dict = BOTC_COUNT[non_traveler_count]
-            except KeyError:
-                await ctx.send(
-                    "You don't have the players for a proper game.",
-                    delete_after=BOTC_MESSAGE_DELETE_DELAY,
-                )
-            else:
-                countstr = (
-                    "{town} townsfolk, {out} outsider(s), {minion} minion(s),"
-                    " and {demon} demon"
-                ).format(**count_dict)
-                await ctx.send(countstr)
-        else:
-            raise BOTCErrors.TownUnlocked("Town count requires a locked town.")
-
-    @commands.command(
         name="public", aliases=["pub", "say"], brief="Make a public statement"
     )
-    @commands.guild_only()
-    @is_called_from_botc_category()
+    @require_locked_town()
     @delete_command_message()
     async def public(self, ctx, *, statement: str):
         """Make a public statement, highlighted for visibility."""
@@ -712,7 +754,9 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             raise commands.UserInputError("Statement is empty")
         author = ctx.message.author
         author_nick = discord.utils.escape_markdown(
-            self.match_name_re(ctx.message.channel.category, author)["nick"]
+            self.bot.botc_townsquare.match_name_re(
+                ctx.message.channel.category, author
+            )["nick"]
         )
         embed = discord.Embed(description=statement, color=discord.Color.blue())
         embed.set_author(name=author_nick, icon_url=author.avatar_url)
@@ -721,15 +765,21 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
 
 def setup(bot):
     """Set up the Blood on the Clocktower extension."""
-    # set up persistent botc guild settings
-    bot.botc_townsquare = DiscordIDSettings(
+    # set up persistent botc town square category settings
+    bot.botc_townsquare_settings = DiscordIDSettings(
         bot, "botc_townsquare", BOTC_CATEGORY_DEFAULT_SETTINGS
     )
+    # set up town square object
+    bot.botc_townsquare = BOTCTownSquare(bot)
 
-    bot.add_cog(BOTCTownSquare(bot))
+    bot.add_cog(BOTCTownSquareSetup(bot))
+    bot.add_cog(BOTCTownSquareStorytellers(bot))
+    bot.add_cog(BOTCTownSquarePlayers(bot))
 
 
 def teardown(bot):
     """Tear down the Blood on the Clocktower extension."""
-    # tear down persistent botc guild settings
+    # tear down persistent botc town square category settings
+    bot.botc_townsquare_settings.teardown()
+    # tear down town square object
     bot.botc_townsquare.teardown()
