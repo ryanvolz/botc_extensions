@@ -30,7 +30,6 @@ EMOJI_DIGITS[" "] = "\N{BLACK LARGE SQUARE}"
 EMOJI_DIGITS["10"] = "\N{KEYCAP TEN}"
 EMOJI_DIGITS["*"] = "*\N{VARIATION SELECTOR-16}\N{COMBINING ENCLOSING KEYCAP}"
 
-
 BOTC_COUNT = {
     5: dict(town=3, out=0, minion=1, demon=1),
     6: dict(town=3, out=1, minion=1, demon=1),
@@ -45,7 +44,6 @@ BOTC_COUNT = {
     15: dict(town=9, out=2, minion=3, demon=1),
 }
 
-
 BOTC_GUILD_DEFAULT_SETTINGS = dict(
     category_re=re.compile(r".*(CLOCKTOWER)|(BOTC).*", re.IGNORECASE),
     dead_emoji="💀",
@@ -53,9 +51,6 @@ BOTC_GUILD_DEFAULT_SETTINGS = dict(
     novote_emoji="🚫",
     traveling_emoji="🚁",
 )
-
-guild_settings = DiscordIDSettings("botc_townsquare", BOTC_GUILD_DEFAULT_SETTINGS)
-
 
 BOTC_MESSAGE_DELETE_DELAY = 60
 
@@ -68,7 +63,7 @@ def is_called_from_botc_category():
             # don't restrict match if command is in a DM
             return True
         else:
-            category_re = guild_settings.get(ctx.bot, ctx.guild.id, "category_re")
+            category_re = ctx.bot.botc_townsquare.get(ctx.guild.id, "category_re")
             return category_re.match(ctx.message.channel.category.name)
 
     return commands.check(predicate)
@@ -166,7 +161,7 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
             r"(?P<nick>.*)"
         )
         emoji_vars = ["dead_emoji", "novote_emoji", "vote_emoji", "traveling_emoji"]
-        emojis = {k: guild_settings.get(self.bot, guild.id, k) for k in emoji_vars}
+        emojis = {k: self.bot.botc_townsquare.get(guild.id, k) for k in emoji_vars}
         name_re = re.compile(name_re_template.format(**emojis))
         return name_re
 
@@ -192,18 +187,18 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
         if info["seat"] is not None:
             fill["seat"] = f"_{info['seat']:02d}"
         if info["dead"]:
-            fill["dead"] = guild_settings.get(self.bot, ctx.guild.id, "dead_emoji")
+            fill["dead"] = self.bot.botc_townsquare.get(ctx.guild.id, "dead_emoji")
         if info["num_votes"] is not None:
             if info["num_votes"] == 0:
-                fill["votes"] = guild_settings.get(
-                    self.bot, ctx.guild.id, "novote_emoji"
+                fill["votes"] = self.bot.botc_townsquare.get(
+                    ctx.guild.id, "novote_emoji"
                 )
             else:
-                vote_emoji = guild_settings.get(self.bot, ctx.guild.id, "vote_emoji")
+                vote_emoji = self.bot.botc_townsquare.get(ctx.guild.id, "vote_emoji")
                 fill["votes"] = info["num_votes"] * vote_emoji
         if info["traveling"]:
-            fill["traveling"] = guild_settings.get(
-                self.bot, ctx.guild.id, "traveling_emoji"
+            fill["traveling"] = self.bot.botc_townsquare.get(
+                ctx.guild.id, "traveling_emoji"
             )
         return fill
 
@@ -721,7 +716,9 @@ class BOTCTownSquare(commands.Cog, name="BOTC Town Square"):
 def setup(bot):
     """Set up the Blood on the Clocktower extension."""
     # set up persistent botc guild settings
-    guild_settings.setup(bot)
+    bot.botc_townsquare = DiscordIDSettings(
+        bot, "botc_townsquare", BOTC_GUILD_DEFAULT_SETTINGS
+    )
 
     bot.add_cog(BOTCTownSquare(bot))
 
@@ -729,4 +726,4 @@ def setup(bot):
 def teardown(bot):
     """Tear down the Blood on the Clocktower extension."""
     # tear down persistent botc guild settings
-    guild_settings.teardown(bot)
+    bot.botc_townsquare.teardown()
