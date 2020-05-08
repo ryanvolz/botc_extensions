@@ -544,6 +544,8 @@ class BOTCTownSquareStorytellers(
             await commands.has_guild_permissions(administrator=True).predicate(ctx)
         except commands.MissingPermissions:
             pass
+        else:
+            return result
         result = result and await commands.has_role("Storytelling BOTC").predicate(ctx)
         return result
 
