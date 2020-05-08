@@ -10,6 +10,7 @@
 # ----------------------------------------------------------------------------
 """Discord extension for Blood on the Clocktower."""
 
+import ast
 import collections
 import functools
 import math
@@ -938,20 +939,24 @@ class BOTCTownSquareManage(
         """Set a town square property to the given value."""
         if not value:
             raise commands.UserInputError("Must pass a value to set")
-        if key not in self.settings_keys:
+        if key not in self.setting_keys:
             raise commands.UserInputError(
-                f"Invalid setting key. Must be one of {self.settings_keys}."
+                f"Invalid setting key. Must be one of {self.setting_keys}."
             )
         category = ctx.message.channel.category
-        self.bot.botc_townsquare_settings.set(category.id, key, value)
+        try:
+            val = ast.literal_eval(value)
+        except ValueError:
+            val = value
+        self.bot.botc_townsquare_settings.set(category.id, key, val)
         await acknowledge_command(ctx)
 
     @town.command(brief="Unset a town square property", usage="<key>")
     async def unset(self, ctx, key: str):
         """Unset a town square property, returning it to a default value."""
-        if key not in self.settings_keys:
+        if key not in self.setting_keys:
             raise commands.UserInputError(
-                f"Invalid setting key. Must be one of {self.settings_keys}."
+                f"Invalid setting key. Must be one of {self.setting_keys}."
             )
         category = ctx.message.channel.category
         self.bot.botc_townsquare_settings.unset(category.id, key)
