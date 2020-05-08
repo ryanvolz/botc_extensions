@@ -47,7 +47,6 @@ BOTC_COUNT = {
 
 BOTC_CATEGORY_DEFAULT_SETTINGS = dict(
     category_re=re.compile(r".*(CLOCKTOWER)|(BOTC).*", re.IGNORECASE),
-    is_town=False,
     dead_emoji="💀",
     vote_emoji="👻",
     novote_emoji="🚫",
@@ -67,7 +66,7 @@ def is_called_from_botc_category():
         else:
             cat_id = ctx.message.channel.category.id
             return ctx.bot.botc_townsquare_settings.get(
-                cat_id, "is_town"
+                cat_id, "is_enabled", False
             ) or ctx.bot.botc_townsquare_settings.get(cat_id, "category_re").match(
                 ctx.message.channel.category.name
             )
@@ -865,6 +864,99 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
         embed = discord.Embed(description=statement, color=discord.Color.blue())
         embed.set_author(name=author_nick, icon_url=author.avatar_url)
         await ctx.send(content=None, embed=embed)
+
+
+class BOTCTownSquareManage(
+    BOTCTownSquareErrorMixin, commands.Cog, name="Manage Town Squares"
+):
+    """Commands for managing Blood on the Clocktower voice/text town square categories.
+
+    """
+
+    def __init__(self, bot):
+        """Initialize cog for town square management commands."""
+        self.bot = bot
+        self.setting_keys = (
+            "is_enabled" "dead_emoji",
+            "vote_emoji",
+            "novote_emoji",
+            "traveling_emoji",
+        )
+
+    async def cog_check(self, ctx):
+        """Check that commands come from a user with appropriate permissions."""
+        # checking permissions will raise an exception if failed, so if extra checks
+        # are desired make sure to catch that exception if necessary
+        result = await commands.guild_only().predicate(
+            ctx
+        ) and await commands.has_permissions(manage_channels=True).predicate(ctx)
+        return result
+
+    @commands.group(brief="Manage a town square category")
+    @delete_command_message()
+    async def town(self, ctx):
+        """Command group for managing a Blood on the Clocktower town square category."""
+        if ctx.invoked_subcommand is None:
+            # list the town settings
+            lines = [
+                (
+                    f"Use sub-commands to manage a town square category."
+                    f" [{ctx.prefix}help {ctx.command}]"
+                )
+            ]
+            category = ctx.message.channel.category
+            settings = self.bot.botc_townsquare_settings
+            is_town = settings.get(category.id, "is_enabled", None)
+            if is_town is not None:
+                # settings exist for the town, print them
+                lines += [f"Settings for {category.name}:"]
+                lines += [
+                    "`{key}`: {val}".format(
+                        key=key, val=settings.get(category.id, key, None)
+                    )
+                    for key in self.setting_keys
+                ]
+            await ctx.send("\n".join(lines), delete_after=BOTC_MESSAGE_DELETE_DELAY)
+
+    @town.command(brief="Enable town square commands", usage="[<category-name>]")
+    async def enable(self, ctx, *, category: discord.CategoryChannel = None):
+        """Enable town square commands in the current or specified category."""
+        if category is None:
+            category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.set(category.id, "is_enabled", True)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Disable town square commands", usage="[<category-name>]")
+    async def disable(self, ctx, *, category: discord.CategoryChannel = None):
+        """Disable town square commands in the current or specified category."""
+        if category is None:
+            category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.set(category.id, "is_enabled", False)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Set a town square property", usage="<key> <value>")
+    async def set(self, ctx, key: str, *, value: str):
+        """Set a town square property to the given value."""
+        if not value:
+            raise commands.UserInputError("Must pass a value to set")
+        if key not in self.settings_keys:
+            raise commands.UserInputError(
+                f"Invalid setting key. Must be one of {self.settings_keys}."
+            )
+        category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.set(category.id, key, value)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Unset a town square property", usage="<key>")
+    async def unset(self, ctx, key: str):
+        """Unset a town square property, returning it to a default value."""
+        if key not in self.settings_keys:
+            raise commands.UserInputError(
+                f"Invalid setting key. Must be one of {self.settings_keys}."
+            )
+        category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.unset(category.id, key)
+        await acknowledge_command(ctx)
 
 
 def setup(bot):
