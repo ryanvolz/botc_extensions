@@ -535,16 +535,16 @@ class BOTCTownSquareStorytellers(
 
     async def cog_check(self, ctx):
         """Check that commands come from a storyteller in a game category."""
-        result = (
-            await commands.guild_only().predicate(ctx)
-            and await is_called_from_botc_category().predicate(ctx)
-            and (
-                await commands.has_role("Storytelling BOTC").predicate(ctx)
-                or await commands.has_guild_permissions(administrator=True).predicate(
-                    ctx
-                )
-            )
-        )
+        result = await commands.guild_only().predicate(
+            ctx
+        ) and await is_called_from_botc_category().predicate(ctx)
+        # checking permissions will raise an exception if failed, but we then want to
+        # be able to check the role instead
+        try:
+            await commands.has_guild_permissions(administrator=True).predicate(ctx)
+        except commands.MissingPermissions:
+            pass
+        result = result and await commands.has_role("Storytelling BOTC").predicate(ctx)
         return result
 
     @commands.command(name="lock", brief="Lock the town")
