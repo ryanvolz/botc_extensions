@@ -313,7 +313,7 @@ class BOTCTownSquare(object):
 
 
 class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
-    """Commands for town square setup.
+    """Commands for Blood on the Clocktower voice/text town square setup.
 
     If you want to play in the next game, use the `play` command in the game's text
     chat. This will modify your nickname to include a seat number. If you want to be a
@@ -344,7 +344,11 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     @require_unlocked_town()
     @delete_command_message()
     async def play(self, ctx, *, member: discord.Member = None):
-        """Set the caller or given user as a player."""
+        """Set the caller or given user as a player.
+
+        Indicate another player if necessary using their *exact* name/tag.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         if member is None:
             member = ctx.message.author
@@ -366,7 +370,12 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     @require_unlocked_town()
     @delete_command_message()
     async def unplay(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Remove the caller or given user as a player, also restoring name."""
+        """Remove the caller or given user as a player, also restoring name.
+
+        Indicate another player if necessary using either their seat number or their
+        *exact* name/tag.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         member = await self.bot.botc_townsquare.resolve_member_arg(ctx, member)
         if member in town["travelers"]:
@@ -387,7 +396,12 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     @require_unlocked_town()
     @delete_command_message()
     async def travel(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Set the caller or given user as a traveler."""
+        """Set the caller or given user as a traveler.
+
+        Indicate another player if necessary using either their seat number (if already
+        a player) or their *exact* name/tag.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         member = await self.bot.botc_townsquare.resolve_member_arg(ctx, member)
         if member not in town["players"]:
@@ -401,7 +415,12 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     @require_unlocked_town()
     @delete_command_message()
     async def untravel(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Unset the caller or given user as a traveler."""
+        """Unset the caller or given user as a traveler.
+
+        Indicate another player if necessary using either their seat number or their
+        *exact* name/tag.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
         if member not in town["travelers"]:
@@ -417,7 +436,11 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     @require_unlocked_town()
     @delete_command_message()
     async def storytell(self, ctx, *, member: discord.Member = None):
-        """Set the caller or given user as a storyteller."""
+        """Set the caller or given user as a storyteller.
+
+        Indicate another player if necessary using their *exact* name/tag.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         if member is None:
             member = ctx.message.author
@@ -459,6 +482,9 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
         The current occupant of the given seat, and everyone between that seat and the
         old seat, will be shifted toward the old seat.
 
+        To move someone else, use their seat number of their *exact* name/tag as the
+        optional second argument.
+
         """
         town = self.bot.botc_townsquare.get_town(ctx)
         member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
@@ -492,7 +518,7 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
 class BOTCTownSquareStorytellers(
     BOTCTownSquareErrorMixin, commands.Cog, name="Storytellers"
 ):
-    """Commands for town square storytellers.
+    """Commands for Blood on the Clocktower voice/text storytellers.
 
     Once all players are ready, use the `lock` command to freeze the player list and
     seat assignments. If you need to make adjustments mid-game, use the `unlock`
@@ -551,39 +577,31 @@ class BOTCTownSquareStorytellers(
 
 
 class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Players"):
-    """Commands for town square players.
+    """Commands for Blood on the Clocktower voice/text players.
 
     During play, you can get a live sense of the state of the game by looking at the
-    voice chat user list. The storyteller(s) appears at the top, and players are listed
-    next in seat order. Each player's state, including if they are dead, ghost votes
+    voice chat user list. Each player's state, including if they are dead, ghost votes
     they have, and whether they are traveling, is represented by emojis in their
     nickname.
 
-    When you learn that you have died, use the `dead` command in the text chat, and the
-    bot will give you the appropriate emojis. If you use your dead vote, use `voted` so
-    that your emojis indicate that. (If you type one of these commands in error, just
-    use the appropriate one, including `alive`, to return to your actual state.)
+    When you learn that your state has changed (dead / alive / used ghost vote), use
+    the appropriate command (`dead` / `alive` / `voted`) in the text chat, and the
+    bot will give you the appropriate emojis.
 
-    Sometimes it can be useful to get a summary of the town square in the text chat.
-    Anyone can use `townsquare` or `ts` and the bot will respond with the summary.
-    If you just want to know the default character-type count for the game, use
-    `count`.
+    Anyone can use `townsquare` or `ts` and the bot will respond with a summary of the
+    state of the town. If you just want to know the default character-type count for
+    the game, use `count`.
 
-    Nominations are handled with the `nominate` command (`nom` or `n` for short). To
-    use it to make a nomination yourself, type the command and then the seat number of
-    the player you'd like to nominate, e.g. `.nominate 1`. This puts a noticeable
-    message in the chat that we can refer back to later with the number of votes
-    received. If someone is being slow, you can also do the command for them by
-    including the seat number of the nominator first, e.g. `.nominate 2 1`. When the
-    vote is counted, the storyteller or a helper will record the number of votes as a
-    reaction to the nomination message by using the `nom votes` command followed by a
-    number.
+    To make a nomination yourself, use the `nominate` command (`nom` or `n` for short)
+    followed by the seat number of the player you'd like to nominate, e.g.
+    `.nominate 1`. When the vote is counted, the storyteller or a helper will record
+    the number of votes as a reaction to the nomination message by using the
+    `nominate votes` sub-command followed by a number.
 
-    As a general tool, there is also the `public` command for making statements that
-    you want to be more noticeable. This is usually used for things that the
-    storyteller needs to see and act on, like the Juggler or Gossip abilities. Whatever
-    text you include in the command, as in `.public <text>`, will be repeated and
-    attributed to you using the bot's megaphone.
+    The `public` command is a general tool for making statements that you want to be
+    more noticeable (e.g. Juggler or Gossip abilities). Whatever text you include in
+    the command, as in `.public <text>`, will be repeated and attributed to you using
+    the bot's megaphone.
 
     """
 
@@ -601,7 +619,12 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
     @commands.command(brief="Set player to 'dead'", usage="[<seat>|<name>]")
     @delete_command_message()
     async def dead(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Set the caller or user as dead, changing their name appropriately."""
+        """Set the caller or user as dead, changing their name appropriately.
+
+        Indicate another player if necessary using either their seat number or their
+        *exact* name/tag.
+
+        """
         member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
         await self.bot.botc_townsquare.set_player_info(
             ctx, member, dead=True, num_votes=1
@@ -610,7 +633,12 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
     @commands.command(brief="Set player to 'voted'", usage="[<seat>|<name>]")
     @delete_command_message()
     async def voted(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Set the caller or user as dead with a used ghost vote."""
+        """Set the caller or user as dead with a used ghost vote.
+
+        Indicate another player if necessary using either their seat number or their
+        *exact* name/tag.
+
+        """
         member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
         await self.bot.botc_townsquare.set_player_info(
             ctx, member, dead=True, num_votes=0
@@ -619,7 +647,12 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
     @commands.command(brief="Set player to 'alive'", usage="[<seat>|<name>]")
     @delete_command_message()
     async def alive(self, ctx, *, member: typing.Union[int, discord.Member] = None):
-        """Set the caller or user as alive, changing their name appropriately."""
+        """Set the caller or user as alive, changing their name appropriately.
+
+        Indicate another player if necessary using either their seat number or their
+        *exact* name/tag.
+
+        """
         member = await self.bot.botc_townsquare.resolve_player_arg(ctx, member)
         await self.bot.botc_townsquare.set_player_info(
             ctx, member, dead=False, num_votes=None
@@ -691,7 +724,12 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
     async def nominate(
         self, ctx, members: commands.Greedy[typing.Union[int, discord.Member]]
     ):
-        """Nominate a player for execution, or set both nominator and target."""
+        """Nominate a player for execution, or set both nominator and target.
+
+        Indicate a player using either their seat number or their *exact* name/tag.
+        With one argument, the user of the command will be taken as the nominator.
+
+        """
         town = self.bot.botc_townsquare.get_town(ctx)
         if len(members) == 0:
             raise commands.UserInputError("Could not parse any members to nominate")
