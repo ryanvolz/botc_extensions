@@ -969,6 +969,7 @@ def setup(bot):
     bot.add_cog(BOTCTownSquareSetup(bot))
     bot.add_cog(BOTCTownSquareStorytellers(bot))
     bot.add_cog(BOTCTownSquarePlayers(bot))
+    bot.add_cog(BOTCTownSquareManage(bot))
 
 
 def teardown(bot):
