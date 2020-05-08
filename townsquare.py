@@ -666,9 +666,7 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
             ctx, member, dead=False, num_votes=None
         )
 
-    @commands.command(
-        name="townsquare", aliases=["town", "ts"], brief="Show the town square"
-    )
+    @commands.command(name="townsquare", aliases=["ts"], brief="Show the town square")
     @require_locked_town()
     @delete_command_message()
     async def townsquare(self, ctx):
