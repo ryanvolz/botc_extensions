@@ -950,7 +950,10 @@ class BOTCTownSquareManage(
             val = value
         self.bot.botc_townsquare_settings.set(category.id, key, val)
         # reset the name_regexes for the town in case the emoji settings changed
-        del self.bot.botc_townsquare.name_regexes[category.id]
+        try:
+            del self.bot.botc_townsquare.name_regexes[category.id]
+        except KeyError:
+            pass
         await acknowledge_command(ctx)
 
     @town.command(brief="Unset a town square property", usage="<key>")
