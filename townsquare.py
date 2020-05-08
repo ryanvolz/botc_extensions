@@ -946,7 +946,7 @@ class BOTCTownSquareManage(
         category = ctx.message.channel.category
         try:
             val = ast.literal_eval(value)
-        except ValueError:
+        except (ValueError, SyntaxError):
             val = value
         self.bot.botc_townsquare_settings.set(category.id, key, val)
         await acknowledge_command(ctx)
