@@ -875,7 +875,8 @@ class BOTCTownSquareManage(
         """Initialize cog for town square management commands."""
         self.bot = bot
         self.setting_keys = (
-            "is_enabled" "dead_emoji",
+            "is_enabled",
+            "dead_emoji",
             "vote_emoji",
             "novote_emoji",
             "traveling_emoji",
