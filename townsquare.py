@@ -534,10 +534,12 @@ class BOTCTownSquareStorytellers(
         self.bot = bot
 
     async def cog_check(self, ctx):
-        """Check that setup commands are called from a guild and a town category."""
-        result = await commands.guild_only().predicate(
-            ctx
-        ) and await is_called_from_botc_category().predicate(ctx)
+        """Check that commands come from a storyteller in a game category."""
+        result = (
+            await commands.has_role("Storytelling BOTC").predicate(ctx)
+            and await commands.guild_only().predicate(ctx)
+            and await is_called_from_botc_category().predicate(ctx)
+        )
         return result
 
     @commands.command(name="lock", brief="Lock the town")
