@@ -47,11 +47,7 @@ BOTC_COUNT = {
 }
 
 BOTC_CATEGORY_DEFAULT_SETTINGS = dict(
-    category_re=re.compile(r".*(CLOCKTOWER)|(BOTC).*", re.IGNORECASE),
-    dead_emoji="💀",
-    vote_emoji="👻",
-    novote_emoji="🚫",
-    traveling_emoji="🚁",
+    dead_emoji="💀", vote_emoji="👻", novote_emoji="🚫", traveling_emoji="🚁"
 )
 
 BOTC_MESSAGE_DELETE_DELAY = 60
@@ -66,11 +62,7 @@ def is_called_from_botc_category():
             return True
         else:
             cat_id = ctx.message.channel.category.id
-            return ctx.bot.botc_townsquare_settings.get(
-                cat_id, "is_enabled", False
-            ) or ctx.bot.botc_townsquare_settings.get(cat_id, "category_re").match(
-                ctx.message.channel.category.name
-            )
+            return ctx.bot.botc_townsquare_settings.get(cat_id, "is_enabled", False)
 
     return commands.check(predicate)
 
