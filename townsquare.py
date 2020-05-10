@@ -21,7 +21,7 @@ import typing
 import discord
 from discord.ext import commands
 
-from ..utils.commands import acknowledge_command, delete_command_message
+from ..utils.commands import acknowledge_command, delete_command_message, Flag
 from ..utils.persistent_settings import DiscordIDSettings
 
 EMOJI_DIGITS = {
@@ -962,6 +962,45 @@ class BOTCTownSquareManage(
         if category is None:
             category = ctx.message.channel.category
         self.bot.botc_townsquare_settings.set(category.id, "is_enabled", False)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Create a town square category", usage="<category-name>")
+    async def create(self, ctx, flags: commands.Greedy[Flag("private")], *, name: str):
+        """Create and populate a town square category with the given name."""
+        if "private" in flags:
+            overwrites = {
+                ctx.guild.default_role: discord.PermissionOverwrite(
+                    read_messages=False, connect=False
+                ),
+                ctx.guild.me: discord.PermissionOverwrite(
+                    read_messages=True, connect=True
+                ),
+            }
+        else:
+            overwrites = {}
+        reason = "By user request through BOTC townsquare extension"
+        category = await ctx.guild.create_category(
+            name=name, overwrites=overwrites, reason=reason
+        )
+        # text chat channel
+        await ctx.guild.create_text_channel(
+            name=name.replace(" ", "-").lower(), category=category, reason=reason
+        )
+        # voice town square and sidebars
+        await ctx.guild.create_voice_channel(
+            name="Town Square", category=category, reason=reason
+        )
+        # voice sidebars
+        for n in range(1, 8):
+            await ctx.guild.create_voice_channel(
+                name=f"Sidebar {n}", category=category, reason=reason
+            )
+        # storyteller sidebar
+        await ctx.guild.create_voice_channel(
+            name="Storyteller Sidebar", category=category, reason=reason
+        )
+        # enable the category for townsquare commands
+        self.bot.botc_townsquare_settings.set(category.id, "is_enabled", True)
         await acknowledge_command(ctx)
 
     @town.command(brief="Set an emoji property", usage="<emoji-key> <emoji>")
