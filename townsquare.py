@@ -46,9 +46,12 @@ BOTC_COUNT = {
     15: dict(town=9, out=2, minion=3, demon=1),
 }
 
-BOTC_CATEGORY_DEFAULT_SETTINGS = dict(
-    dead_emoji="💀", vote_emoji="👻", novote_emoji="🚫", traveling_emoji="🚁"
-)
+BOTC_CATEGORY_DEFAULT_SETTINGS = {
+    "emoji.dead": "💀",
+    "emoji.vote": "👻",
+    "emoji.novote": "🚫",
+    "emoji.traveling": "🚁",
+}
 
 BOTC_MESSAGE_DELETE_DELAY = 60
 
@@ -169,11 +172,21 @@ class BOTCTownSquare(object):
         """Save state for the town square."""
         pass
 
+    def _get_role_settings(self, category):
+        """Get dictionary of roles from the BOTC town square category settings."""
+        role_vars = ["role.player", "role.traveler", "role.storyteller"]
+        role_ids = {
+            k[5:]: self.bot.botc_townsquare_settings.get(category.id, k)
+            for k in role_vars
+        }
+        return role_ids
+
     def _get_emoji_settings(self, category):
         """Get dictionary of emojis from the BOTC town square category settings."""
-        emoji_vars = ["dead_emoji", "novote_emoji", "vote_emoji", "traveling_emoji"]
+        emoji_vars = ["emoji.dead", "emoji.novote", "emoji.vote", "emoji.traveling"]
         emojis = {
-            k: self.bot.botc_townsquare_settings.get(category.id, k) for k in emoji_vars
+            k[6:]: self.bot.botc_townsquare_settings.get(category.id, k)
+            for k in emoji_vars
         }
         return emojis
 
@@ -182,9 +195,9 @@ class BOTCTownSquare(object):
         name_re_template = (
             r"^(?:(?P<seat>_\d+)|(?P<st>!ST))?"
             r"\s*"
-            r"(?P<dead>{dead_emoji})?"
-            r"(?P<votes>{novote_emoji}|{vote_emoji}+)?"
-            r"(?P<traveling>{traveling_emoji})?"
+            r"(?P<dead>{dead})?"
+            r"(?P<votes>{novote}|{vote}+)?"
+            r"(?P<traveling>{traveling})?"
             r"\s*"
             r"(?P<nick>.*)"
         )
@@ -197,6 +210,7 @@ class BOTCTownSquare(object):
             town = self._towns[category.id]
         except KeyError:
             # load town square settings into this instance at time of creation
+            role_ids = self._get_role_settings(category)
             emojis = self._get_emoji_settings(category)
             name_re = self._format_name_re(emojis)
             # create an empty town
@@ -211,6 +225,7 @@ class BOTCTownSquare(object):
                 locked=False,
                 nomination=None,
                 prev_nomination=None,
+                role_ids=role_ids,
                 emojis=emojis,
                 name_re=name_re,
             )
@@ -242,14 +257,14 @@ class BOTCTownSquare(object):
         if info["seat"] is not None:
             fill["seat"] = f"_{info['seat']:02d}"
         if info["dead"]:
-            fill["dead"] = emojis["dead_emoji"]
+            fill["dead"] = emojis["dead"]
         if info["num_votes"] is not None:
             if info["num_votes"] == 0:
-                fill["votes"] = emojis["novote_emoji"]
+                fill["votes"] = emojis["novote"]
             else:
-                fill["votes"] = info["num_votes"] * emojis["vote_emoji"]
+                fill["votes"] = info["num_votes"] * emojis["vote"]
         if info["traveling"]:
-            fill["traveling"] = emojis["traveling_emoji"]
+            fill["traveling"] = emojis["traveling"]
         return fill
 
     async def set_player_nickname(self, ctx, member):
@@ -358,8 +373,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
         order.append(member)
         number = len(order)
         await ts.set_player_info(ctx, member, seat=number)
-        player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
-        await member.add_roles(player_role)
+        role_id = town["role_ids"]["player"]
+        if role_id is not None:
+            role = ctx.guild.get_role(role_id)
+            await member.add_roles(role)
 
     @commands.command(
         aliases=["quit"], brief="Remove a player", usage="[<seat>|<name>]"
@@ -382,8 +399,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
             town["players"].remove(member)
             town["player_order"].remove(member)
         await ts.restore_name(ctx, member)
-        player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
-        await member.remove_roles(player_role)
+        role_id = town["role_ids"]["player"]
+        if role_id is not None:
+            role = ctx.guild.get_role(role_id)
+            await member.remove_roles(role)
         for idx, player in enumerate(town["player_order"]):
             if town["player_info"][player]["seat"] != idx + 1:
                 await ts.set_player_info(ctx, player, seat=idx + 1)
@@ -405,8 +424,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
             await ctx.invoke(self.play, member=member)
         town["travelers"].add(member)
         await ts.set_player_info(ctx, member, traveling=True)
-        traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
-        await member.add_roles(traveler_role)
+        role_id = town["role_ids"]["traveler"]
+        if role_id is not None:
+            role = ctx.guild.get_role(role_id)
+            await member.add_roles(role)
 
     @commands.command(brief="Unset player as a traveler", usage="[<seat>|<name>]")
     @require_unlocked_town()
@@ -425,8 +446,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
             return
         town["travelers"].remove(member)
         await ts.set_player_info(ctx, member, traveling=False)
-        traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
-        await member.remove_roles(traveler_role)
+        role_id = town["role_ids"]["traveler"]
+        if role_id is not None:
+            role = ctx.guild.get_role(role_id)
+            await member.remove_roles(role)
 
     @commands.command(
         name="storytell", aliases=["st"], brief="Add a storyteller", usage="[<name>]"
@@ -449,8 +472,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
             await ctx.invoke(self.unplay, member=member)
         town["storytellers"].add(member)
         await ts.set_storyteller_nickname(ctx, member)
-        storyteller_role = discord.utils.get(ctx.guild.roles, name="Storytelling BOTC")
-        await member.add_roles(storyteller_role)
+        role_id = town["role_ids"]["storyteller"]
+        if role_id is not None:
+            role = ctx.guild.get_role(role_id)
+            await member.add_roles(role)
 
     @commands.command(
         name="unstorytell", aliases=["unst"], brief="Unset storyteller(s)"
@@ -464,10 +489,10 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
         for storyteller in list(town["storytellers"]):
             town["storytellers"].remove(storyteller)
             await ts.restore_name(ctx, storyteller)
-            storyteller_role = discord.utils.get(
-                ctx.guild.roles, name="Storytelling BOTC"
-            )
-            await storyteller.remove_roles(storyteller_role)
+            role_id = town["role_ids"]["storyteller"]
+            if role_id is not None:
+                role = ctx.guild.get_role(role_id)
+                await storyteller.remove_roles(role)
 
     @commands.command(
         brief="Move player to a given seat", usage="<new-seat> [<old-seat>|<name>]"
@@ -570,17 +595,24 @@ class BOTCTownSquareStorytellers(
         ts = self.bot.botc_townsquare
         category = ctx.message.channel.category
         town = ts.get_town(category)
-        player_role = discord.utils.get(ctx.guild.roles, name="Playing BOTC")
-        storyteller_role = discord.utils.get(ctx.guild.roles, name="Storytelling BOTC")
-        traveler_role = discord.utils.get(ctx.guild.roles, name="Traveling BOTC")
+
+        roles = {}
+        for key, role_id in town["role_ids"].items():
+            if role_id is not None:
+                roles[key] = ctx.guild.get_role(role_id)
+            else:
+                roles[key] = role_id
         for player in town["players"]:
             await ts.restore_name(ctx, player)
-            await player.remove_roles(player_role)
+            if roles["player"] is not None:
+                await player.remove_roles(roles["player"])
         for storyteller in town["storytellers"]:
             await ts.restore_name(ctx, storyteller)
-            await storyteller.remove_roles(storyteller_role)
-        for traveler in town["travelers"]:
-            await traveler.remove_roles(traveler_role)
+            if roles["storyteller"] is not None:
+                await storyteller.remove_roles(roles["storyteller"])
+        if roles["traveler"] is not None:
+            for traveler in town["travelers"]:
+                await traveler.remove_roles(roles["traveler"])
         ts.del_town(category)
         await acknowledge_command(ctx)
 
@@ -868,12 +900,17 @@ class BOTCTownSquareManage(
     def __init__(self, bot):
         """Initialize cog for town square management commands."""
         self.bot = bot
-        self.setting_keys = (
-            "is_enabled",
-            "dead_emoji",
-            "vote_emoji",
-            "novote_emoji",
-            "traveling_emoji",
+        self.roles = dict(
+            player=dict(prefix="Playing", color=discord.Color.green()),
+            traveler=dict(prefix="Traveling", color=discord.Color.gold()),
+            storyteller=dict(prefix="Storytelling", color=discord.Color.magenta()),
+        )
+        self.emoji_keys = ("dead", "vote", "novote", "traveling")
+
+        self.setting_keys = tuple(
+            ["is_enabled"]
+            + [f"role.{key}" for key in self.roles.keys()]
+            + [f"emoji.{key}" for key in self.emoji_keys]
         )
 
     async def cog_check(self, ctx):
@@ -925,6 +962,45 @@ class BOTCTownSquareManage(
         if category is None:
             category = ctx.message.channel.category
         self.bot.botc_townsquare_settings.set(category.id, "is_enabled", False)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Set/create a role property", usage="<role-key> <role>")
+    async def setrole(self, ctx, key: str, *, role: discord.Role = None):
+        """Set a town square role property as given, or create a new role and set it."""
+        if key not in self.roles:
+            raise commands.UserInputError(
+                f"Invalid role setting key. Must be one of {self.roles.keys()}."
+            )
+        category = ctx.message.channel.category
+        if role is None:
+            # create a new role for the category
+            role_dict = self.roles[key]
+            name = f"{role_dict['prefix']} {category.name}"
+            try:
+                role = await ctx.guild.create_role(
+                    name=name,
+                    color=role_dict["color"],
+                    hoist=False,
+                    mentionable=True,
+                    reason="By user request through BOTC townsquare extension",
+                )
+            except Exception:
+                # couldn't create role, see if it already exists
+                role = discord.utils.get(ctx.guild.roles, name=name)
+                if role is None:
+                    raise
+        self.bot.botc_townsquare_settings.set(category.id, f"role.{key}", role.id)
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Unset a role property", usage="<role-key>")
+    async def unsetrole(self, ctx, key: str):
+        """Unset a town square role property, returning it to a default value."""
+        if key not in self.roles:
+            raise commands.UserInputError(
+                f"Invalid role setting key. Must be one of {self.roles.keys()}."
+            )
+        category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.unset(category.id, f"role.{key}")
         await acknowledge_command(ctx)
 
     @town.command(brief="Set a town square property", usage="<key> <value>")
