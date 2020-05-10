@@ -965,11 +965,15 @@ class BOTCTownSquareManage(
         await acknowledge_command(ctx)
 
     @town.command(brief="Set an emoji property", usage="<emoji-key> <emoji>")
-    async def setemoji(self, ctx, key: str, *, emoji: discord.PartialEmoji):
+    async def setemoji(self, ctx, key: str, *, emoji: typing.Union[discord.Emoji, str]):
         """Set a town square emoji property to the given emoji."""
         if key not in self.emoji_keys:
             raise commands.UserInputError(
                 f"Invalid emoji setting key. Must be one of {self.emoji_keys}."
+            )
+        if isinstance(emoji, discord.Emoji):
+            raise commands.UserInputError(
+                "Cannot use custom Discord emojis in nickname."
             )
         category = ctx.message.channel.category
         self.bot.botc_townsquare_settings.set(category.id, f"emoji.{key}", str(emoji))
@@ -1027,7 +1031,12 @@ class BOTCTownSquareManage(
 
     @town.command(brief="Set a town square property", usage="<key> <value>")
     async def set(self, ctx, key: str, *, value: str):
-        """Set a town square property to the given value."""
+        """Set a town square property to the given value.
+
+        This is a low-level command. Be careful what values you pass, because it can
+        easily break!
+
+        """
         if not value:
             raise commands.UserInputError("Must pass a value to set")
         if key not in self.setting_keys:
