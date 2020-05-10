@@ -964,6 +964,28 @@ class BOTCTownSquareManage(
         self.bot.botc_townsquare_settings.set(category.id, "is_enabled", False)
         await acknowledge_command(ctx)
 
+    @town.command(brief="Set an emoji property", usage="<emoji-key> <emoji>")
+    async def setemoji(self, ctx, key: str, *, emoji: discord.PartialEmoji):
+        """Set a town square emoji property to the given emoji."""
+        if key not in self.emoji_keys:
+            raise commands.UserInputError(
+                f"Invalid emoji setting key. Must be one of {self.emoji_keys}."
+            )
+        category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.set(category.id, f"emoji.{key}", str(emoji))
+        await acknowledge_command(ctx)
+
+    @town.command(brief="Unset an emoji property", usage="<emoji-key>")
+    async def unsetemoji(self, ctx, key: str):
+        """Unset a town square emoji property, returning it to a default value."""
+        if key not in self.emoji_keys:
+            raise commands.UserInputError(
+                f"Invalid emoji setting key. Must be one of {self.emoji_keys}."
+            )
+        category = ctx.message.channel.category
+        self.bot.botc_townsquare_settings.unset(category.id, f"emoji.{key}")
+        await acknowledge_command(ctx)
+
     @town.command(brief="Set/create a role property", usage="<role-key> <role>")
     async def setrole(self, ctx, key: str, *, role: discord.Role = None):
         """Set a town square role property as given, or create a new role and set it."""
