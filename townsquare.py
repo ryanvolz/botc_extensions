@@ -947,7 +947,7 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
                     "Voice channel number is invalid"
                 )
         # move author to the requested voice channel
-        await ctx.message.author.edit(voice_channel=vchan)
+        await ctx.message.author.move_to(vchan)
 
 
 class BOTCTownSquareManage(
