@@ -142,9 +142,15 @@ class BOTCTownSquareErrorMixin(object):
                 delete_after=BOTC_MESSAGE_DELETE_DELAY,
             )
         elif isinstance(error, BOTCTownSquareErrors.BadSeatArgument):
-            await ctx.send("That seat doesn't look like anything to me.")
+            await ctx.send(
+                "That seat doesn't look like anything to me.",
+                delete_after=BOTC_MESSAGE_DELETE_DELAY,
+            )
         elif isinstance(error, BOTCTownSquareErrors.BadSidebarArgument):
-            await ctx.send("That sidebar doesn't look like anything to me.")
+            await ctx.send(
+                "That sidebar doesn't look like anything to me.",
+                delete_after=BOTC_MESSAGE_DELETE_DELAY,
+            )
         elif isinstance(error, BOTCTownSquareErrors.TownLocked):
             locked_message = (
                 f"Before I'll allow that, you'll need to put the town into a deep and"
