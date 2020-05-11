@@ -115,9 +115,12 @@ class BOTCTownSquareErrors(object):
             super().__init__(message, *args)
 
     class BadSeatArgument(commands.UserInputError):
-        """Bad argument intented to resolve to a player seat number."""
+        """Bad argument intended to resolve to a player seat number."""
 
         pass
+
+    class BadSidebarArgument(commands.UserInputError):
+        """Bad argument intended to resolve to a voice channel (sidebar) number."""
 
     class TownLocked(commands.UserInputError):
         """Town is locked for a command requiring an unlocked town."""
@@ -140,6 +143,8 @@ class BOTCTownSquareErrorMixin(object):
             )
         elif isinstance(error, BOTCTownSquareErrors.BadSeatArgument):
             await ctx.send("That seat doesn't look like anything to me.")
+        elif isinstance(error, BOTCTownSquareErrors.BadSidebarArgument):
+            await ctx.send("That sidebar doesn't look like anything to me.")
         elif isinstance(error, BOTCTownSquareErrors.TownLocked):
             locked_message = (
                 f"Before I'll allow that, you'll need to put the town into a deep and"
@@ -315,7 +320,7 @@ class BOTCTownSquare(object):
                 member = town["player_order"][member - 1]
             except IndexError:
                 if member == 0 and len(town["storytellers"]) == 1:
-                    member = town["storytellers"].pop()
+                    member = town["storytellers"][0]
                 else:
                     raise BOTCTownSquareErrors.BadSeatArgument("Seat number is invalid")
         return member
@@ -906,6 +911,38 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
         embed = discord.Embed(description=statement, color=discord.Color.blue())
         embed.set_author(name=author_nick, icon_url=author.avatar_url)
         await ctx.send(content=None, embed=embed)
+
+    @commands.command(brief="Go to a voice channel", usage="[sidebar-num|name]")
+    @delete_command_message(delay=0)
+    async def go(self, ctx, *, vchan: typing.Union[int, discord.VoiceChannel] = None):
+        """Go to a specified voice channel/sidebar in the current town category.
+
+        Specify a number to go to the voice channel at that position (starting from 0)
+        in the category list, or pass the tag/name for the voice channel. If no
+        argument is specified, move to the top voice channel (e.g. Town Square).
+
+        If the Town Square is the top voice channel and the sidebar voice channels are
+        numbered after that, the sidebar number can be used as the argument.
+
+        """
+        voice_channels = ctx.message.channel.category.voice_channels
+        if vchan is None:
+            vchan = voice_channels[0]
+        elif isinstance(vchan, discord.VoiceChannel):
+            # otherwise vchan is either a discord.VoiceChannel...
+            pass
+        else:
+            # or an int, representing a voice channel (sidebar) number in the category
+            try:
+                # assume town square is the 0th voice channel, so sidebar numbers can
+                # be indexed directly without modification
+                vchan = voice_channels[vchan]
+            except IndexError:
+                raise BOTCTownSquareErrors.BadSidebarArgument(
+                    "Voice channel number is invalid"
+                )
+        # move author to the requested voice channel
+        await ctx.message.author.edit(voice_channel=vchan)
 
 
 class BOTCTownSquareManage(
