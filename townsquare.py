@@ -953,7 +953,13 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
                     "Voice channel number is invalid"
                 )
         # move author to the requested voice channel
-        await ctx.message.author.move_to(vchan)
+        try:
+            await ctx.message.author.move_to(vchan)
+        except discord.HTTPException:
+            await ctx.send(
+                "Bring yourself back online first. [connect to voice]",
+                delete_after=BOTC_MESSAGE_DELETE_DELAY,
+            )
 
 
 class BOTCTownSquareManage(
