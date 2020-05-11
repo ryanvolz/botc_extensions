@@ -12,6 +12,8 @@ bot/lib/utils
 ## townsquare
 The purpose of this extension is to use the features of Discord itself to represent a town square to facilitate voice/text games. This means using nicknames and roles to order players and track the state of the game. It also means providing commands to make actions in the game (e.g. nominations and public statements) more visible. As of now, this extension is not intended to implement Blood on the Clocktower and its game logic; rather, it gives players and storytellers tools to make voice/text games run a little smoother.
 
+The bot running this extension must have the appropriate permissions to change nicknames, assign roles, manage channels, etc. In particular, though, the nickname and role functionality will fail if the bot's top role is not above the top role of all of the users within a game. This means that the bot will never be able to manage the nickname/roles of the server owner, because the server owner always has the top role.
+
 These instructions assume that the bot is using a command prefix of `.`, i.e. `.command`.
 
 ### Extension Setup

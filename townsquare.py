@@ -271,7 +271,10 @@ class BOTCTownSquare(object):
         """Set a players' nickname based on their data in player_info."""
         fill = self.player_nickname_components(ctx, member)
         nickname = "{seat}{dead}{votes}{traveling} {nick}".format(**fill)
-        await member.edit(nick=nickname)
+        try:
+            await member.edit(nick=nickname)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     async def set_player_info(self, ctx, member, **kwargs):
         """Set new values for player info and then adjust their nickname."""
@@ -283,13 +286,19 @@ class BOTCTownSquare(object):
         """Set a member's nickname to have storyteller markings."""
         nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
         name = f"!ST {nick}"
-        await member.edit(nick=name)
+        try:
+            await member.edit(nick=name)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     async def restore_name(self, ctx, member):
         """Restore a member's nickname after playing."""
         nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
         name = f"{nick}"
-        await member.edit(nick=name)
+        try:
+            await member.edit(nick=name)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     async def resolve_member_arg(self, ctx, member):
         """Resolve argument intended to identify a member or player/storyteller."""
@@ -399,13 +408,13 @@ class BOTCTownSquareSetup(BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
             town["players"].remove(member)
             town["player_order"].remove(member)
         await ts.restore_name(ctx, member)
+        for idx, player in enumerate(town["player_order"]):
+            if town["player_info"][player]["seat"] != idx + 1:
+                await ts.set_player_info(ctx, player, seat=idx + 1)
         role_id = town["role_ids"]["player"]
         if role_id is not None:
             role = ctx.guild.get_role(role_id)
             await member.remove_roles(role)
-        for idx, player in enumerate(town["player_order"]):
-            if town["player_info"][player]["seat"] != idx + 1:
-                await ts.set_player_info(ctx, player, seat=idx + 1)
 
     @commands.command(brief="Set player as a traveler", usage="[<seat>|<name>]")
     @require_unlocked_town()
@@ -605,14 +614,23 @@ class BOTCTownSquareStorytellers(
         for player in town["players"]:
             await ts.restore_name(ctx, player)
             if roles["player"] is not None:
-                await player.remove_roles(roles["player"])
+                try:
+                    await player.remove_roles(roles["player"])
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
         for storyteller in town["storytellers"]:
             await ts.restore_name(ctx, storyteller)
             if roles["storyteller"] is not None:
-                await storyteller.remove_roles(roles["storyteller"])
+                try:
+                    await storyteller.remove_roles(roles["storyteller"])
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
         if roles["traveler"] is not None:
             for traveler in town["travelers"]:
-                await traveler.remove_roles(roles["traveler"])
+                try:
+                    await traveler.remove_roles(roles["traveler"])
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
         ts.del_town(category)
         await acknowledge_command(ctx)
 
