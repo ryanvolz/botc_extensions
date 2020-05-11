@@ -898,20 +898,7 @@ class BOTCTownSquareManage(
     These management commands are only available to a user with the "Manage Channels"
     permission.
 
-    If you're starting fresh, use the `town create` command followed by a name for the
-    new category, e.g. `.town create Ravenswood Bluff`. This will create a category and
-    populate it with the desired text and voice channels (town square and sidebars) for
-    running games. If you have an existing category that you want to enable the
-    commands in, use the `town enable` command from a text channel within the category.
-
-    Additionally, town categories can be customized by setting various properties,
-    including the emojis used to track player state and the Discord roles assigned to
-    players/travelers/storytellers in an active game. These properties can be viewed by
-    using the `town` command. Emojis will already be set by default, but the town
-    Discord roles are empty by default. To create new roles particular to the town, use
-    `.town setrole <type>` with one of the role types, either `player`, `traveler`, or
-    `storyteller`. It's also possible to create these roles manually and assign them to
-    the town with `.town setrole <type> <role>`.
+    See the help for the `town` command for more information.
 
     """
 
@@ -943,7 +930,25 @@ class BOTCTownSquareManage(
     @commands.group(brief="Manage a town square category")
     @delete_command_message()
     async def town(self, ctx):
-        """Command group for managing a Blood on the Clocktower town square category."""
+        """Command group for managing a Blood on the Clocktower town square category.
+
+        If you're starting fresh, use the `town create` command followed by a name for
+        the new category, e.g. `.town create Ravenswood Bluff`. This will create a
+        category and populate it with the desired text and voice channels (town square
+        and sidebars) for running games. If you have an existing category that you want
+        to enable the commands in, use the `town enable` command from a text channel
+        within the category.
+
+        Additionally, town categories can be customized by setting various properties,
+        including the emojis used to track player state and the Discord roles assigned
+        to players/travelers/storytellers in an active game. These properties can be
+        viewed by using the `town` command. Emojis will already be set by default, but
+        the town Discord roles are empty by default. To create new roles particular to
+        the town, use `.town setrole <type>` with one of the role types, either
+        `player`, `traveler`, or `storyteller`. It's also possible to create these
+        roles manually and assign them to the town with `.town setrole <type> <role>`.
+
+        """
         if ctx.invoked_subcommand is None:
             # list the town settings
             lines = [
