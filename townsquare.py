@@ -927,7 +927,12 @@ class BOTCTownSquarePlayers(BOTCTownSquareErrorMixin, commands.Cog, name="Player
         """
         voice_channels = ctx.message.channel.category.voice_channels
         if vchan is None:
-            vchan = voice_channels[0]
+            try:
+                vchan = voice_channels[0]
+            except IndexError:
+                raise BOTCTownSquareErrors.BadSidebarArgument(
+                    "No voice channels exist in the category"
+                )
         elif isinstance(vchan, discord.VoiceChannel):
             # otherwise vchan is either a discord.VoiceChannel...
             pass
