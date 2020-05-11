@@ -1007,9 +1007,16 @@ class BOTCTownSquareManage(
         self.bot.botc_townsquare_settings.set(category.id, "is_enabled", False)
         await acknowledge_command(ctx)
 
-    @town.command(brief="Create a town square category", usage="<category-name>")
+    @town.command(
+        brief="Create a town square category", usage="[private] <category-name>"
+    )
     async def create(self, ctx, flags: commands.Greedy[Flag("private")], *, name: str):
-        """Create and populate a town square category with the given name."""
+        """Create and populate a town square category with the given name.
+
+        Use "private" immediately after the command and before the category name to
+        create a category that is not viewable by default.
+
+        """
         if "private" in flags:
             overwrites = {
                 ctx.guild.default_role: discord.PermissionOverwrite(
