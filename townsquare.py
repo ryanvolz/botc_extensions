@@ -932,6 +932,8 @@ class BOTCTownSquareManage(
     async def town(self, ctx):
         """Command group for managing a Blood on the Clocktower town square category.
 
+        Use `town` without a sub-command to get a list of the town category properties.
+
         If you're starting fresh, use the `town create` command followed by a name for
         the new category, e.g. `.town create Ravenswood Bluff`. This will create a
         category and populate it with the desired text and voice channels (town square
