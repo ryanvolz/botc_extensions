@@ -48,7 +48,10 @@ class BOTCTownSquareStorytellers(
             pass
         else:
             return result
-        result = result and await commands.has_role("Storytelling BOTC").predicate(ctx)
+        town = self.bot.botc_townsquare.get_town(ctx.message.channel.category)
+        role_id = town["role_ids"]["storyteller"]
+        if role_id is not None:
+            result = result and await commands.has_role(role_id).predicate(ctx)
         return result
 
     @commands.command(name="lock", brief="Lock the town")
