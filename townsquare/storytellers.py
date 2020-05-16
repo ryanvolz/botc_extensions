@@ -13,12 +13,12 @@
 import discord
 from discord.ext import commands
 
-from . import townsquare_common
-from ..utils.commands import acknowledge_command, delete_command_message
+from . import common
+from ...utils.commands import acknowledge_command, delete_command_message
 
 
 class BOTCTownSquareStorytellers(
-    townsquare_common.BOTCTownSquareErrorMixin, commands.Cog, name="Storytellers"
+    common.BOTCTownSquareErrorMixin, commands.Cog, name="Storytellers"
 ):
     """Commands for Blood on the Clocktower voice/text storytellers.
 
@@ -39,7 +39,7 @@ class BOTCTownSquareStorytellers(
         """Check that commands come from a storyteller in a game category."""
         result = await commands.guild_only().predicate(
             ctx
-        ) and await townsquare_common.is_called_from_botc_category().predicate(ctx)
+        ) and await common.is_called_from_botc_category().predicate(ctx)
         # checking permissions will raise an exception if failed, but we then want to
         # be able to check the role instead
         try:

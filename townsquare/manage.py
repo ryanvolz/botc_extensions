@@ -16,12 +16,12 @@ import typing
 import discord
 from discord.ext import commands
 
-from . import townsquare_common
-from ..utils.commands import acknowledge_command, delete_command_message, Flag
+from . import common
+from ...utils.commands import acknowledge_command, delete_command_message, Flag
 
 
 class BOTCTownSquareManage(
-    townsquare_common.BOTCTownSquareErrorMixin, commands.Cog, name="Manage Towns"
+    common.BOTCTownSquareErrorMixin, commands.Cog, name="Manage Towns"
 ):
     """Commands for managing Blood on the Clocktower voice/text town categories.
 
@@ -102,8 +102,7 @@ class BOTCTownSquareManage(
                     for key in self.setting_keys
                 ]
             await ctx.send(
-                "\n".join(lines),
-                delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY,
+                "\n".join(lines), delete_after=common.BOTC_MESSAGE_DELETE_DELAY
             )
 
     @town.command(brief="Enable town square commands", usage="[<category-name>]")

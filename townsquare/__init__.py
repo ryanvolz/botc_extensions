@@ -10,12 +10,12 @@
 # ----------------------------------------------------------------------------
 """Discord extension for facilitating Blood on the Clocktower voice/text games."""
 
-from .townsquare_common import BOTCTownSquare
-from .townsquare_manage import BOTCTownSquareManage
-from .townsquare_players import BOTCTownSquarePlayers
-from .townsquare_setup import BOTCTownSquareSetup
-from .townsquare_storytellers import BOTCTownSquareStorytellers
-from ..utils.persistent_settings import DiscordIDSettings
+from .common import BOTCTownSquare
+from .manage import BOTCTownSquareManage
+from .players import BOTCTownSquarePlayers
+from .setup import BOTCTownSquareSetup
+from .storytellers import BOTCTownSquareStorytellers
+from ...utils.persistent_settings import DiscordIDSettings
 
 BOTC_CATEGORY_DEFAULT_SETTINGS = {
     "emoji.dead": "💀",

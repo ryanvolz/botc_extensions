@@ -17,8 +17,8 @@ import typing
 import discord
 from discord.ext import commands
 
-from . import townsquare_common
-from ..utils.commands import delete_command_message
+from . import common
+from ...utils.commands import delete_command_message
 
 EMOJI_DIGITS = {
     str(num): "{}\N{VARIATION SELECTOR-16}\N{COMBINING ENCLOSING KEYCAP}".format(num)
@@ -51,7 +51,7 @@ def require_locked_town():
         async def wrapper(self, ctx, *args, **kwargs):
             town = self.bot.botc_townsquare.get_town(ctx.message.channel.category)
             if not town["locked"]:
-                raise townsquare_common.BOTCTownSquareErrors.TownUnlocked(
+                raise common.BOTCTownSquareErrors.TownUnlocked(
                     "Command requires a locked town."
                 )
             return await command(self, ctx, *args, **kwargs)
@@ -62,7 +62,7 @@ def require_locked_town():
 
 
 class BOTCTownSquarePlayers(
-    townsquare_common.BOTCTownSquareErrorMixin, commands.Cog, name="Players"
+    common.BOTCTownSquareErrorMixin, commands.Cog, name="Players"
 ):
     """Commands for Blood on the Clocktower voice/text players.
 
@@ -100,7 +100,7 @@ class BOTCTownSquarePlayers(
         """Check that setup commands are called from a guild and a town category."""
         result = await commands.guild_only().predicate(
             ctx
-        ) and await townsquare_common.is_called_from_botc_category().predicate(ctx)
+        ) and await common.is_called_from_botc_category().predicate(ctx)
         return result
 
     @commands.command(brief="Set player to 'dead'", usage="[<seat>|<name>]")
@@ -186,7 +186,7 @@ class BOTCTownSquarePlayers(
         except KeyError:
             await ctx.send(
                 "You don't have the players for a proper game.",
-                delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY,
+                delete_after=common.BOTC_MESSAGE_DELETE_DELAY,
             )
         else:
             countstr = (
@@ -222,9 +222,7 @@ class BOTCTownSquarePlayers(
                 f"A nomination is already in progress."
                 f" [`{ctx.prefix}nominate votes <#>`]"
             )
-            return await ctx.send(
-                msg, delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY
-            )
+            return await ctx.send(msg, delete_after=common.BOTC_MESSAGE_DELETE_DELAY)
         if len(members) > 2:
             raise commands.TooManyArguments(
                 "Nominate only accepts 1 or 2 player arguments."
@@ -280,7 +278,7 @@ class BOTCTownSquarePlayers(
         else:
             return await ctx.send(
                 "There has not been a nomination to vote on.",
-                delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY,
+                delete_after=common.BOTC_MESSAGE_DELETE_DELAY,
             )
         await nom.clear_reactions()
         digits = []
@@ -315,7 +313,7 @@ class BOTCTownSquarePlayers(
         else:
             await ctx.send(
                 "There is no nomination to cancel.",
-                delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY,
+                delete_after=common.BOTC_MESSAGE_DELETE_DELAY,
             )
 
     @commands.command(
@@ -355,7 +353,7 @@ class BOTCTownSquarePlayers(
             try:
                 vchan = voice_channels[0]
             except IndexError:
-                raise townsquare_common.BOTCTownSquareErrors.BadSidebarArgument(
+                raise common.BOTCTownSquareErrors.BadSidebarArgument(
                     "No voice channels exist in the category"
                 )
         elif isinstance(vchan, discord.VoiceChannel):
@@ -368,7 +366,7 @@ class BOTCTownSquarePlayers(
                 # be indexed directly without modification
                 vchan = voice_channels[vchan]
             except IndexError:
-                raise townsquare_common.BOTCTownSquareErrors.BadSidebarArgument(
+                raise common.BOTCTownSquareErrors.BadSidebarArgument(
                     "Voice channel number is invalid"
                 )
         # move author to the requested voice channel
@@ -377,5 +375,5 @@ class BOTCTownSquarePlayers(
         except discord.HTTPException:
             await ctx.send(
                 "Bring yourself back online first. [connect to voice]",
-                delete_after=townsquare_common.BOTC_MESSAGE_DELETE_DELAY,
+                delete_after=common.BOTC_MESSAGE_DELETE_DELAY,
             )

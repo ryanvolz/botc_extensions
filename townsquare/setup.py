@@ -17,8 +17,8 @@ import typing
 import discord
 from discord.ext import commands
 
-from . import townsquare_common
-from ..utils.commands import delete_command_message
+from . import common
+from ...utils.commands import delete_command_message
 
 
 def require_unlocked_town():
@@ -29,7 +29,7 @@ def require_unlocked_town():
         async def wrapper(self, ctx, *args, **kwargs):
             town = self.bot.botc_townsquare.get_town(ctx.message.channel.category)
             if town["locked"]:
-                raise townsquare_common.BOTCTownSquareErrors.TownLocked(
+                raise common.BOTCTownSquareErrors.TownLocked(
                     "Command requires an unlocked town."
                 )
             return await command(self, ctx, *args, **kwargs)
@@ -39,9 +39,7 @@ def require_unlocked_town():
     return decorator
 
 
-class BOTCTownSquareSetup(
-    townsquare_common.BOTCTownSquareErrorMixin, commands.Cog, name="Setup"
-):
+class BOTCTownSquareSetup(common.BOTCTownSquareErrorMixin, commands.Cog, name="Setup"):
     """Commands for Blood on the Clocktower voice/text town square game setup.
 
     If you want to play in the next game, use the `play` command in the game's text
@@ -66,7 +64,7 @@ class BOTCTownSquareSetup(
         """Check that setup commands are called from a guild and a town category."""
         result = await commands.guild_only().predicate(
             ctx
-        ) and await townsquare_common.is_called_from_botc_category().predicate(ctx)
+        ) and await common.is_called_from_botc_category().predicate(ctx)
         return result
 
     @commands.command(brief="Add a player", usage="[<name>]")
