@@ -22,6 +22,7 @@ BOTC_CATEGORY_DEFAULT_SETTINGS = {
     "emoji.vote": "👻",
     "emoji.novote": "🚫",
     "emoji.traveling": "🚁",
+    "emoji.storytelling": "📕",
 }
 
 

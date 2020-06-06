@@ -12,11 +12,21 @@
 
 import collections
 import re
+import textwrap
 
 import discord
 from discord.ext import commands
 
 BOTC_MESSAGE_DELETE_DELAY = 60
+
+
+async def safe_set_nickname(member, nick):
+    """Set nickname, trimming for length and catching all errors."""
+    shortened = textwrap.shorten(nick, 32, placeholder="")
+    try:
+        await member.edit(nick=shortened)
+    except (discord.Forbidden, discord.HTTPException):
+        pass
 
 
 def is_called_from_botc_category():
@@ -121,7 +131,13 @@ class BOTCTownSquare(object):
 
     def _get_emoji_settings(self, category):
         """Get dictionary of emojis from the BOTC town square category settings."""
-        emoji_vars = ["emoji.dead", "emoji.novote", "emoji.vote", "emoji.traveling"]
+        emoji_vars = [
+            "emoji.dead",
+            "emoji.novote",
+            "emoji.vote",
+            "emoji.traveling",
+            "emoji.storytelling",
+        ]
         emojis = {
             k[6:]: self.bot.botc_townsquare_settings.get(category.id, k)
             for k in emoji_vars
@@ -136,6 +152,7 @@ class BOTCTownSquare(object):
             r"(?P<dead>{dead})?"
             r"(?P<votes>{novote}|{vote}+)?"
             r"(?P<traveling>{traveling})?"
+            r"(?P<storytelling>{storytelling})?"
             r"\s*"
             r"(?P<nick>.*)"
         )
@@ -209,10 +226,7 @@ class BOTCTownSquare(object):
         """Set a players' nickname based on their data in player_info."""
         fill = self.player_nickname_components(ctx, member)
         nickname = "{seat}{dead}{votes}{traveling} {nick}".format(**fill)
-        try:
-            await member.edit(nick=nickname)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        await safe_set_nickname(member, nickname)
 
     async def set_player_info(self, ctx, member, **kwargs):
         """Set new values for player info and then adjust their nickname."""
@@ -222,21 +236,19 @@ class BOTCTownSquare(object):
 
     async def set_storyteller_nickname(self, ctx, member):
         """Set a member's nickname to have storyteller markings."""
+        category = ctx.message.channel.category
+        town = self.get_town(category)
+        emojis = town["emojis"]
         nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
-        name = f"!ST {nick}"
-        try:
-            await member.edit(nick=name)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        storytelling = emojis["storytelling"]
+        name = f"!ST{storytelling} {nick}"
+        await safe_set_nickname(member, name)
 
     async def restore_name(self, ctx, member):
         """Restore a member's nickname after playing."""
         nick = self.match_name_re(ctx.message.channel.category, member)["nick"]
         name = f"{nick}"
-        try:
-            await member.edit(nick=name)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        await safe_set_nickname(member, name)
 
     async def resolve_member_arg(self, ctx, member):
         """Resolve argument intended to identify a member or player/storyteller."""

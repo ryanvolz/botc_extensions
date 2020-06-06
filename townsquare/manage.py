@@ -40,7 +40,7 @@ class BOTCTownSquareManage(
             traveler=dict(prefix="Traveling", color=discord.Color.gold()),
             storyteller=dict(prefix="Storytelling", color=discord.Color.magenta()),
         )
-        self.emoji_keys = ("dead", "vote", "novote", "traveling")
+        self.emoji_keys = ("dead", "vote", "novote", "traveling", "storytelling")
 
         self.setting_keys = tuple(
             ["is_enabled"]
